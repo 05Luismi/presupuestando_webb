@@ -1,0 +1,13 @@
+# dependencias
+node_modules/
+
+# credenciales y variables de entorno
+.env*
+!.env.example
+
+# varios
+.DS_Store
+npm-debug.log*
+
+# build de Next.js
+.next/

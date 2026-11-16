@@ -1,0 +1,17 @@
+{
+  "framework": null,
+  "installCommand": "npm install",
+  "buildCommand": "npm --prefix web run build",
+  "outputDirectory": "web/out",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "node_modules/pdfkit/js/data/**"
+    }
+  }
+}
