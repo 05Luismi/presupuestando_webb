@@ -17,9 +17,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { DocumentoPresupuesto } from "@/components/documento-presupuesto"
+import type { LineaPresupuesto } from "@/components/documento-presupuesto"
 
 export type ServicioPropuesto = {
   id: string
@@ -50,23 +49,16 @@ type Item = {
 
 type Seleccion = { id: string; cantidad?: number }[]
 
-type Linea = {
-  id: string
-  nombre: string
-  cantidad: number
-  precioUnitario: number
-  importe: number
+// Presupuesto ya calculado por el servidor: se muestra junto al documento
+export type PresupuestoCalculado = {
+  lineas: LineaPresupuesto[]
+  total: number
+  moneda: string
+  seleccion: Seleccion
+  descripciones: Record<string, string>
 }
 
-type Calculo =
-  | {
-      ok: true
-      lineas: Linea[]
-      total: number
-      moneda: string
-      seleccion: Seleccion
-    }
-  | { ok: false; status: number; error: string; detalles: string[] }
+type ErrorCalculo = { status: number; error: string; detalles: string[] }
 
 const MAX_PAGINAS_ADICIONALES = 19
 
@@ -85,16 +77,11 @@ function cantidadValida(texto: string) {
 
 export function RevisionPropuesta({
   propuestos,
-  cliente,
-  resumen,
-  dudas,
-  pendientes,
+  onCalculo,
 }: {
   propuestos: ServicioPropuesto[]
-  cliente: string
-  resumen: string
-  dudas: string[]
-  pendientes: string[]
+  // Avisa del presupuesto calculado (o null cuando un cambio lo invalida)
+  onCalculo: (presupuesto: PresupuestoCalculado | null) => void
 }) {
   const [catalogo, setCatalogo] = useState<ServicioCatalogo[]>([])
   const [items, setItems] = useState<Item[]>(() =>
@@ -107,7 +94,8 @@ export function RevisionPropuesta({
     }))
   )
   const [cargando, setCargando] = useState(false)
-  const [calculo, setCalculo] = useState<Calculo | null>(null)
+  const [calculado, setCalculado] = useState(false)
+  const [error, setError] = useState<ErrorCalculo | null>(null)
 
   useEffect(() => {
     fetch("/api/catalogo")
@@ -144,7 +132,10 @@ export function RevisionPropuesta({
 
   function cambiar(actualizar: (items: Item[]) => Item[]) {
     setItems(actualizar)
-    setCalculo(null) // cualquier cambio invalida el cálculo anterior
+    // Cualquier cambio invalida el cálculo anterior
+    setCalculado(false)
+    setError(null)
+    onCalculo(null)
   }
 
   const fijarEstado = (id: string, estado: Estado) =>
@@ -192,6 +183,7 @@ export function RevisionPropuesta({
   async function calcular() {
     if (faltan.length > 0) return
     setCargando(true)
+    setError(null)
     try {
       // Solo se envían ids y cantidad; los importes los pone el servidor
       const seleccion: Seleccion = activos.map((i) =>
@@ -208,18 +200,25 @@ export function RevisionPropuesta({
       })
       const datos = await res.json()
       if (res.ok) {
-        setCalculo({ ok: true, ...datos, seleccion })
+        setCalculado(true)
+        onCalculo({
+          lineas: datos.lineas,
+          total: datos.total,
+          moneda: datos.moneda,
+          seleccion,
+          descripciones: Object.fromEntries(
+            catalogo.map((s) => [s.id, s.descripcion])
+          ),
+        })
       } else {
-        setCalculo({
-          ok: false,
+        setError({
           status: res.status,
           error: datos.error,
           detalles: datos.detalles ?? [],
         })
       }
     } catch {
-      setCalculo({
-        ok: false,
+      setError({
         status: 0,
         error: "No se pudo conectar con la API.",
         detalles: ["Comprueba que el servidor de Express está arrancado."],
@@ -412,68 +411,21 @@ export function RevisionPropuesta({
         {cargando ? "Calculando…" : "Confirmar selección y calcular"}
       </Button>
 
-      {calculo?.ok && (
-        <div
-          className="flex flex-col gap-3 rounded-lg border bg-background p-4"
-          aria-live="polite"
-        >
-          <span className="flex items-center justify-between gap-2 font-medium">
-            Presupuesto
-            <Badge variant="secondary">Calculado por el servidor</Badge>
-          </span>
-          {calculo.lineas.map((l) => (
-            <div key={l.id} className="flex justify-between gap-4 text-sm">
-              <span>
-                {l.nombre}
-                {l.cantidad > 1 && (
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {l.cantidad} × {euros(l.precioUnitario)}
-                  </span>
-                )}
-              </span>
-              <span className="font-mono">{euros(l.importe)}</span>
-            </div>
-          ))}
-          <Separator className="my-1" />
-          <div className="flex items-end justify-between">
-            <span className="font-medium">Total</span>
-            <span className="text-3xl font-semibold tracking-tight text-primary">
-              {euros(calculo.total)}
-            </span>
-          </div>
-          <p className="text-right text-xs text-muted-foreground">
-            {calculo.moneda} · sin impuestos
-          </p>
-        </div>
+      {calculado && (
+        <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+          <CheckIcon className="size-4" />
+          Presupuesto calculado: revísalo en el paso 3.
+        </p>
       )}
 
-      {calculo?.ok && (
-        <>
-          <Separator />
-          <DocumentoPresupuesto
-            cliente={cliente}
-            resumenInicial={resumen}
-            dudasIniciales={dudas}
-            pendientesIniciales={pendientes}
-            seleccion={calculo.seleccion}
-            desglose={calculo.lineas}
-            total={calculo.total}
-            descripciones={Object.fromEntries(
-              catalogo.map((s) => [s.id, s.descripcion])
-            )}
-          />
-        </>
-      )}
-
-      {calculo && !calculo.ok && (
+      {error && (
         <Alert variant="destructive">
           <AlertCircleIcon />
-          <AlertTitle>{calculo.error}</AlertTitle>
-          {calculo.detalles.length > 0 && (
+          <AlertTitle>{error.error}</AlertTitle>
+          {error.detalles.length > 0 && (
             <AlertDescription>
               <ul className="list-inside list-disc">
-                {calculo.detalles.map((d) => (
+                {error.detalles.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>

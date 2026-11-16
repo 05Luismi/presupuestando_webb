@@ -127,3 +127,13 @@
     @apply font-sans;
     }
 }
+/* Mascota del asistente de IA: flota suavemente */
+@keyframes flotar {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -8px;
+  }
+}

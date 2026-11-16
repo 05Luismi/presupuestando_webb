@@ -1,9 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import {
   AlertCircleIcon,
   CircleHelpIcon,
+  ClipboardListIcon,
+  FileTextIcon,
   InfoIcon,
   Loader2Icon,
   SparklesIcon,
@@ -17,7 +20,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,9 +27,15 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import {
   RevisionPropuesta,
+  type PresupuestoCalculado,
   type ServicioPropuesto,
 } from "@/components/revision-propuesta"
+import { DocumentoPresupuesto } from "@/components/documento-presupuesto"
 import { cn } from "@/lib/utils"
+import camaron from "@/public/img/camaron.webp"
+
+const euros = (n: number) =>
+  n.toLocaleString("es-ES", { useGrouping: "always" }) + " €"
 
 type Limites = {
   clienteMin: number
@@ -85,6 +93,9 @@ export function SolicitudForm() {
   const [descripcion, setDescripcion] = useState("")
   const [cargando, setCargando] = useState(false)
   const [resultado, setResultado] = useState<Resultado | null>(null)
+  const [presupuesto, setPresupuesto] = useState<PresupuestoCalculado | null>(
+    null
+  )
   // Lo que la IA va escribiendo mientras llega la respuesta (streaming)
   const [enCurso, setEnCurso] = useState<{
     resumen: string
@@ -105,12 +116,14 @@ export function SolicitudForm() {
     setCliente(ejemplo.cliente)
     setDescripcion(ejemplo.descripcion)
     setResultado(null)
+    setPresupuesto(null)
   }
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
     setCargando(true)
     setResultado(null)
+    setPresupuesto(null)
     setEnCurso({ resumen: "", servicios: [] })
     try {
       // Route Handler de Next (app/api/ia/propuesta/route.ts): responde en streaming
@@ -190,141 +203,309 @@ export function SolicitudForm() {
     }
   }
 
+  const propuesta = resultado?.ok ? resultado : null
+
+  // Tres pasos uno al lado del otro: 1) contar el proyecto, 2) revisar la
+  // propuesta, 3) presupuesto y documento. En pantallas estrechas se apilan.
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <SparklesIcon className="size-5 text-primary" />
-          Cuéntanos tu proyecto
-        </CardTitle>
-        <CardDescription>
-          Explica con tus palabras qué necesitas y te propondremos los servicios
-          adecuados.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={enviar} className="flex flex-col gap-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              Ejemplos ficticios:
-            </span>
-            {EJEMPLOS.map((ej) => (
-              <Button
-                key={ej.etiqueta}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => usarEjemplo(ej)}
-              >
-                {ej.etiqueta}
-              </Button>
-            ))}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="cliente">Nombre del cliente o empresa</Label>
-            <Input
-              id="cliente"
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              placeholder="Ej.: Restaurante La Brasa Imaginaria"
-              autoComplete="organization"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="descripcion">¿Qué necesitas?</Label>
-            <Textarea
-              id="descripcion"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Ej.: Necesito una web para mi restaurante con la carta, un formulario de reservas y en dos idiomas."
-              aria-invalid={excedido || undefined}
-              aria-describedby="descripcion-ayuda"
-            />
-            <div
-              id="descripcion-ayuda"
-              className="flex justify-between gap-4 text-xs text-muted-foreground"
-            >
-              <span>Mínimo {limites.descripcionMin} caracteres.</span>
-              <span className={cn("font-mono", excedido && "text-destructive")}>
-                {longitud.toLocaleString("es-ES")} /{" "}
-                {limites.descripcionMax.toLocaleString("es-ES")}
-              </span>
+    <div className="grid gap-6 xl:grid-cols-3 xl:items-start">
+      <Paso numero={1} titulo="Cuéntanos tu proyecto" Icono={SparklesIcon}>
+        <Card>
+          <CardHeader className="flex items-center gap-4">
+            <AvatarIA className="size-14" />
+            <div className="relative rounded-xl rounded-tl-none bg-muted/60 px-3 py-2">
+              <p className="text-sm font-medium">¡Hola! Soy tu asistente.</p>
+              <CardDescription>
+                Explícame con tus palabras qué necesitas y te propondré los
+                servicios adecuados.
+              </CardDescription>
             </div>
-          </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={enviar} className="flex flex-col gap-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Ejemplos ficticios:
+                </span>
+                {EJEMPLOS.map((ej) => (
+                  <Button
+                    key={ej.etiqueta}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => usarEjemplo(ej)}
+                  >
+                    {ej.etiqueta}
+                  </Button>
+                ))}
+              </div>
 
-          <Button
-            type="submit"
-            size="lg"
-            className="h-11 text-base"
-            disabled={cargando}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="cliente">Nombre del cliente o empresa</Label>
+                <Input
+                  id="cliente"
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  placeholder="Ej.: Restaurante La Brasa Imaginaria"
+                  autoComplete="organization"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="descripcion">¿Qué necesitas?</Label>
+                <Textarea
+                  id="descripcion"
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  placeholder="Ej.: Necesito una web para mi restaurante con la carta, un formulario de reservas y en dos idiomas."
+                  aria-invalid={excedido || undefined}
+                  aria-describedby="descripcion-ayuda"
+                  className="min-h-32"
+                />
+                <div
+                  id="descripcion-ayuda"
+                  className="flex justify-between gap-4 text-xs text-muted-foreground"
+                >
+                  <span>Mínimo {limites.descripcionMin} caracteres.</span>
+                  <span
+                    className={cn("font-mono", excedido && "text-destructive")}
+                  >
+                    {longitud.toLocaleString("es-ES")} /{" "}
+                    {limites.descripcionMax.toLocaleString("es-ES")}
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                size="lg"
+                className="h-11 text-base"
+                disabled={cargando}
+              >
+                {cargando ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <SparklesIcon />
+                )}
+                {cargando ? "Analizando tu proyecto…" : "Proponer servicios"}
+              </Button>
+
+              {resultado && !resultado.ok && (
+                <Alert variant="destructive">
+                  <AlertCircleIcon />
+                  <AlertTitle className="flex items-center justify-between gap-2">
+                    {resultado.error}
+                    <Badge variant="destructive">
+                      HTTP {resultado.status || "—"}
+                    </Badge>
+                  </AlertTitle>
+                  {resultado.detalles.length > 0 && (
+                    <AlertDescription>
+                      <ul className="list-inside list-disc">
+                        {resultado.detalles.map((d) => (
+                          <li key={d}>{d}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  )}
+                </Alert>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      </Paso>
+
+      <Paso
+        numero={2}
+        titulo="Revisa la propuesta"
+        Icono={ClipboardListIcon}
+        activo={Boolean(enCurso || propuesta)}
+      >
+        {enCurso ? (
+          <section
+            className="flex flex-col gap-3 rounded-xl border border-dashed bg-muted/30 p-4"
+            aria-live="polite"
+            aria-busy="true"
           >
-            {cargando ? (
-              <Loader2Icon className="animate-spin" />
-            ) : (
-              <SparklesIcon />
-            )}
-            {cargando ? "Analizando tu proyecto…" : "Proponer servicios"}
-          </Button>
-
-          {enCurso && (
-            <section
-              className="flex flex-col gap-3 rounded-lg border border-dashed bg-muted/30 p-4"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <span className="flex items-center gap-2 text-sm font-medium">
+            <span className="flex items-center gap-3 text-sm font-medium">
+              <AvatarIA className="size-10 animate-bounce" />
+              <span className="flex items-center gap-2">
                 <Loader2Icon className="size-4 animate-spin text-primary" />
                 La IA está preparando la propuesta…
               </span>
-              <p className="min-h-5 text-sm text-muted-foreground">
-                {enCurso.resumen}
-                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-primary align-text-bottom" />
-              </p>
-              {enCurso.servicios.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {enCurso.servicios.map((s) => (
-                    <Badge key={s} variant="secondary">
-                      {s}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
+            </span>
+            <p className="min-h-5 text-sm text-muted-foreground">
+              {enCurso.resumen}
+              <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-primary align-text-bottom" />
+            </p>
+            {enCurso.servicios.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {enCurso.servicios.map((s) => (
+                  <Badge key={s} variant="secondary">
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : propuesta ? (
+          <PropuestaVista
+            cliente={propuesta.cliente}
+            propuesta={propuesta.propuesta}
+            avisos={propuesta.avisos}
+            onCalculo={setPresupuesto}
+          />
+        ) : (
+          <Hueco>
+            Cuando envíes tu proyecto, aquí verás los servicios que propone la
+            IA para que los aceptes, elimines o añadas otros.
+          </Hueco>
+        )}
+      </Paso>
 
-          {resultado?.ok && (
-            <PropuestaVista
-              cliente={resultado.cliente}
-              propuesta={resultado.propuesta}
-              avisos={resultado.avisos}
-            />
-          )}
+      <Paso
+        numero={3}
+        titulo="Presupuesto y PDF"
+        Icono={FileTextIcon}
+        activo={Boolean(presupuesto)}
+      >
+        {propuesta && presupuesto ? (
+          <Card>
+            <CardContent className="flex flex-col gap-6">
+              <ResumenImportes presupuesto={presupuesto} />
+              <Separator />
+              {/* key: un cálculo nuevo reinicia el documento */}
+              <DocumentoPresupuesto
+                key={JSON.stringify(presupuesto.seleccion)}
+                cliente={propuesta.cliente}
+                resumenInicial={propuesta.propuesta.resumen}
+                dudasIniciales={propuesta.propuesta.dudas}
+                pendientesIniciales={propuesta.propuesta.pendientes}
+                seleccion={presupuesto.seleccion}
+                desglose={presupuesto.lineas}
+                total={presupuesto.total}
+                descripciones={presupuesto.descripciones}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <Hueco>
+            Cuando confirmes los servicios, aquí tendrás el total calculado por
+            el servidor y el documento listo para descargar en PDF.
+          </Hueco>
+        )}
+      </Paso>
+    </div>
+  )
+}
 
-          {resultado && !resultado.ok && (
-            <Alert variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle className="flex items-center justify-between gap-2">
-                {resultado.error}
-                <Badge variant="destructive">
-                  HTTP {resultado.status || "—"}
-                </Badge>
-              </AlertTitle>
-              {resultado.detalles.length > 0 && (
-                <AlertDescription>
-                  <ul className="list-inside list-disc">
-                    {resultado.detalles.map((d) => (
-                      <li key={d}>{d}</li>
-                    ))}
-                  </ul>
-                </AlertDescription>
-              )}
-            </Alert>
+function Paso({
+  numero,
+  titulo,
+  Icono,
+  activo = true,
+  children,
+}: {
+  numero: number
+  titulo: string
+  Icono: typeof InfoIcon
+  activo?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    // Las columnas entran escalonadas, de izquierda a derecha
+    <section
+      className="flex min-w-0 flex-col gap-3 animate-in fade-in slide-in-from-bottom-6 fill-mode-both duration-700 ease-out"
+      style={{ animationDelay: `${100 + (numero - 1) * 140}ms` }}
+    >
+      <h2 className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+        <span
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
+            activo
+              ? "border-primary bg-primary text-primary-foreground"
+              : "text-muted-foreground"
           )}
-        </form>
-      </CardContent>
-    </Card>
+        >
+          {numero}
+        </span>
+        <span className={cn(!activo && "text-muted-foreground")}>{titulo}</span>
+        <Icono
+          className={cn(
+            "ml-auto size-5",
+            activo ? "text-primary" : "text-muted-foreground/50"
+          )}
+        />
+      </h2>
+      {children}
+    </section>
+  )
+}
+
+// Cara de la mascota, recortada en círculo: representa al asistente de IA
+function AvatarIA({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-full border-2 border-primary/60 bg-primary/15 shadow-sm",
+        className
+      )}
+    >
+      <Image
+        src={camaron}
+        alt=""
+        sizes="56px"
+        className="absolute inset-x-0 top-0 h-auto w-full scale-[1.35] origin-top"
+      />
+    </span>
+  )
+}
+
+function Hueco({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex min-h-40 items-center justify-center rounded-xl border border-dashed p-6 text-center text-sm text-balance text-muted-foreground">
+      {children}
+    </p>
+  )
+}
+
+function ResumenImportes({
+  presupuesto,
+}: {
+  presupuesto: PresupuestoCalculado
+}) {
+  return (
+    <div className="flex flex-col gap-3" aria-live="polite">
+      <span className="flex items-center justify-between gap-2 font-medium">
+        Presupuesto
+        <Badge variant="secondary">Calculado por el servidor</Badge>
+      </span>
+      {presupuesto.lineas.map((l) => (
+        <div key={l.id} className="flex justify-between gap-4 text-sm">
+          <span>
+            {l.nombre}
+            {l.cantidad > 1 && (
+              <span className="text-muted-foreground">
+                {" "}
+                · {l.cantidad} × {euros(l.precioUnitario)}
+              </span>
+            )}
+          </span>
+          <span className="font-mono">{euros(l.importe)}</span>
+        </div>
+      ))}
+      <Separator className="my-1" />
+      <div className="flex items-end justify-between">
+        <span className="font-medium">Total</span>
+        <span className="text-3xl font-semibold tracking-tight text-primary">
+          {euros(presupuesto.total)}
+        </span>
+      </div>
+      <p className="text-right text-xs text-muted-foreground">
+        {presupuesto.moneda} · sin impuestos
+      </p>
+    </div>
   )
 }
 
@@ -332,68 +513,66 @@ function PropuestaVista({
   cliente,
   propuesta,
   avisos,
+  onCalculo,
 }: {
   cliente: string
   propuesta: Propuesta
   avisos: string[]
+  onCalculo: (presupuesto: PresupuestoCalculado | null) => void
 }) {
   return (
-    <section
-      className="flex flex-col gap-5 rounded-lg border bg-muted/30 p-4"
-      aria-live="polite"
-    >
-      <div className="flex flex-col gap-1">
-        <span className="flex items-center justify-between gap-2 text-sm font-medium">
-          Propuesta para {cliente}
-          <Badge variant="secondary">Generada con IA</Badge>
-        </span>
-        {propuesta.resumen && (
-          <p className="text-sm text-muted-foreground">{propuesta.resumen}</p>
+    <Card aria-live="polite">
+      <CardContent className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center justify-between gap-2 text-sm font-medium">
+            Propuesta para {cliente}
+            <Badge variant="secondary">Generada con IA</Badge>
+          </span>
+          {propuesta.resumen && (
+            <p className="text-sm text-muted-foreground">{propuesta.resumen}</p>
+          )}
+        </div>
+
+        <ListaNotas
+          titulo="Dudas para aclarar"
+          Icono={CircleHelpIcon}
+          items={propuesta.dudas}
+        />
+        <ListaNotas
+          titulo="Pendiente de valorar (fuera del catálogo)"
+          Icono={AlertCircleIcon}
+          items={propuesta.pendientes}
+        />
+
+        {avisos.length > 0 && (
+          <Alert>
+            <InfoIcon />
+            <AlertTitle>Correcciones del servidor</AlertTitle>
+            <AlertDescription>
+              <ul className="list-inside list-disc">
+                {avisos.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
         )}
-      </div>
 
-      <ListaNotas
-        titulo="Dudas para aclarar"
-        Icono={CircleHelpIcon}
-        items={propuesta.dudas}
-      />
-      <ListaNotas
-        titulo="Pendiente de valorar (fuera del catálogo)"
-        Icono={AlertCircleIcon}
-        items={propuesta.pendientes}
-      />
+        <Separator />
 
-      {avisos.length > 0 && (
-        <Alert>
-          <InfoIcon />
-          <AlertTitle>Correcciones del servidor</AlertTitle>
-          <AlertDescription>
-            <ul className="list-inside list-disc">
-              {avisos.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
+        {/* key: una propuesta nueva reinicia la revisión */}
+        <RevisionPropuesta
+          key={JSON.stringify(propuesta.servicios)}
+          propuestos={propuesta.servicios}
+          onCalculo={onCalculo}
+        />
 
-      <Separator />
-
-      {/* key: una propuesta nueva reinicia la revisión */}
-      <RevisionPropuesta
-        key={JSON.stringify(propuesta.servicios)}
-        propuestos={propuesta.servicios}
-        cliente={cliente}
-        resumen={propuesta.resumen}
-        dudas={propuesta.dudas}
-        pendientes={propuesta.pendientes}
-      />
-
-      <p className="text-xs text-muted-foreground">
-        La IA solo propone servicios; el precio lo calcula nuestro servidor con
-        sus tarifas y no incluye plazos ni compromisos de entrega.
-      </p>
-    </section>
+        <p className="text-xs text-muted-foreground">
+          La IA solo propone servicios; el precio lo calcula nuestro servidor
+          con sus tarifas y no incluye plazos ni compromisos de entrega.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
