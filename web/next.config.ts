@@ -21,11 +21,15 @@ const config: NextConfig = {
   // reutilizar la validación de server/ (catálogo, esquema, comprobaciones).
   turbopack: { root: raiz },
 
-  // El resto de rutas /api/... las atiende la API de Express (puerto 4000).
-  // Son rewrites "afterFiles": las rutas propias de Next (route.ts) tienen prioridad.
-  async rewrites() {
-    const api = process.env.API_URL || "http://localhost:4000"
-    return [{ source: "/api/:path*", destination: `${api}/api/:path*` }]
+  // El resto de rutas /api/... las atiende la API de Express dentro de Next
+  // (app/api/[...ruta]/route.ts), así web y API se despliegan juntas en Vercel.
+  // Express y pdfkit se cargan desde node_modules en vez de empaquetarse.
+  serverExternalPackages: ["express", "pdfkit"],
+
+  // pdfkit lee en tiempo de ejecución las fuentes estándar (Helvetica…):
+  // hay que incluirlas en la función de Vercel.
+  outputFileTracingIncludes: {
+    "/api/[...ruta]": ["./node_modules/pdfkit/js/data/**"],
   },
 }
 
